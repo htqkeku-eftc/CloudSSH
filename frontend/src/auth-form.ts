@@ -60,7 +60,7 @@ export class ConnectionForm {
             <label class="block text-xs font-bold tracking-[0.1em] text-[#bbccb0] mb-2">HOST_ADDRESS</label>
             <div class="flex items-center">
               <span class="text-[#bbccb0] mr-2">&gt;</span>
-              <input id="host" class="terminal-input text-[13px]" placeholder="192.168.1.1" type="text" required>
+               <input id="host" class="terminal-input text-[13px]" placeholder="192.168.1.1 or 2001:db8::1" type="text" required>
             </div>
           </div>
           <div class="col-span-1">
@@ -176,7 +176,8 @@ export class ConnectionForm {
   }
 
   private async handleConnect(): Promise<void> {
-    const host = (document.getElementById('host') as HTMLInputElement).value;
+    const hostInput = (document.getElementById('host') as HTMLInputElement).value;
+    const host = hostInput.replace(/^\[|\]$/g, '').trim();
     const port = parseInt(
       (document.getElementById('port') as HTMLInputElement).value || '22'
     );

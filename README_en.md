@@ -64,6 +64,7 @@
 ## Features
 
 - **Full SSH Handshake**: Native TypeScript implementation of the SSH transport layer and user authentication protocols.
+- **IPv4/IPv6 Dual Stack**: Full support for both IPv4 and IPv6 address connections, including automatic handling of IPv6 bracket notation.
 - **Multiple Auth Methods**: Supports standard SSH password authentication as well as Ed25519 plaintext private key authentication.
 - **MitM Protection (TOFU)**: Automatically extracts and prints the server's Host Key (SHA-256 fingerprint) on the first connection, preventing eavesdropping by malicious nodes.
 - **Geek Terminal Experience**: Powered by `@xterm/xterm` and the `@xterm/addon-webgl` hardware acceleration rendering engine, ensuring silky smooth scrolling even with massive log outputs.
