@@ -51,6 +51,7 @@ export class SSHTerminal {
   private maxReconnectAttempts: number = 5;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastConfig: SSHConnectionConfig | null = null;
+  private onSessionClosed?: (event: CloseEvent) => void;
 
   constructor(containerId: string) {
     this.container = document.getElementById(containerId)!;
@@ -104,6 +105,10 @@ export class SSHTerminal {
     this.terminal.options.theme = THEMES[themeName];
   }
 
+  setSessionClosedHandler(handler: (event: CloseEvent) => void): void {
+    this.onSessionClosed = handler;
+  }
+
   mount(): void {
     this.terminal.open(this.container);
     
@@ -152,6 +157,7 @@ export class SSHTerminal {
           password: config.password,
           authMethod: config.authMethod,
           privateKey: config.privateKey,
+          ...this.getTerminalSize(),
         }));
         
         this.startHeartbeat();
@@ -188,14 +194,20 @@ export class SSHTerminal {
 
     ws.onopen = () => {
       this.terminal.writeln('\x1b[32m[+] WebSocket connected, authenticating...\x1b[0m');
+      this.sendResize();
       this.startHeartbeat();
     };
+
+    if (ws.readyState === WebSocket.OPEN) {
+      this.sendResize();
+    }
 
     this.setupWebSocketHandlers();
   }
 
   private setupWebSocketHandlers(rejectFn?: (reason?: any) => void): void {
     if (!this.ws) return;
+    const socket = this.ws;
 
     // Trzsz file transfer support
     this.trzszFilter = new TrzszFilter({
@@ -234,6 +246,9 @@ export class SSHTerminal {
             case 'error':
               this.terminal.writeln(`\x1b[31m[!] ${msg.message}\x1b[0m`);
               break;
+            case 'debug':
+              this.terminal.writeln(`\x1b[90m[DEBUG] ${msg.message}\x1b[0m`);
+              break;
             case 'pong':
               break;
           }
@@ -248,6 +263,8 @@ export class SSHTerminal {
     };
 
     this.ws.onclose = (event) => {
+      if (socket !== this.ws) return;
+
       this.stopHeartbeat();
       this.terminal.writeln(
         `\x1b[33m[*] Connection closed (code=${event.code})\x1b[0m`
@@ -257,7 +274,12 @@ export class SSHTerminal {
       const statusText = document.getElementById('status-text');
       if (statusText) statusText.innerHTML = '<span class="w-2 h-2 bg-[#353534] inline-block"></span> STATUS: OFFLINE';
       
-      if (event.code !== 1000 && this.lastConfig && this.reconnectAttempts < this.maxReconnectAttempts) {
+      if (event.code === 1000) {
+        this.onSessionClosed?.(event);
+        return;
+      }
+
+      if (this.lastConfig && this.reconnectAttempts < this.maxReconnectAttempts) {
         this.scheduleReconnect();
       }
     };
@@ -284,13 +306,7 @@ export class SSHTerminal {
     // Terminal resize: send to server + update trzsz column count
     this.disposables.push(
       this.terminal.onResize(({ cols, rows }) => {
-        if (this.ws?.readyState === WebSocket.OPEN) {
-          this.ws.send(JSON.stringify({
-            type: 'resize',
-            cols,
-            rows,
-          }));
-        }
+        this.sendResize({ cols, rows });
         this.trzszFilter?.setTerminalColumns(cols);
       })
     );
@@ -307,6 +323,22 @@ export class SSHTerminal {
         this.ws.send(JSON.stringify({ type: 'ping' }));
       }
     }, 30000);
+  }
+
+  private getTerminalSize(): { cols: number; rows: number } {
+    return {
+      cols: this.terminal.cols,
+      rows: this.terminal.rows,
+    };
+  }
+
+  private sendResize(size = this.getTerminalSize()): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'resize',
+        ...size,
+      }));
+    }
   }
 
   private stopHeartbeat(): void {
@@ -333,11 +365,13 @@ export class SSHTerminal {
     this.clearReconnectTimeout();
     this.disposeConnectionDisposables();
 
-    if (this.ws && this.ws.readyState !== WebSocket.CLOSED && this.ws.readyState !== WebSocket.CLOSING) {
-      this.ws.close(1000);
-    }
+    const socket = this.ws;
     this.ws = null;
     this.trzszFilter = null;
+
+    if (socket && socket.readyState !== WebSocket.CLOSED && socket.readyState !== WebSocket.CLOSING) {
+      socket.close(1000);
+    }
   }
 
   private scheduleReconnect(): void {

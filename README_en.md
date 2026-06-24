@@ -39,7 +39,13 @@
 - [Features](#features)
 - [Architecture](#architecture)
 - [Quick Deployment](#quick-start)
+  - [GitHub Integration](#method-1-deploy-via-github-integration-recommended)
+  - [Local CLI Deployment](#method-2-local-cli-deployment)
+  - [Configure Turnstile](#optional-configure-turnstile-human-verification)
+  - [Configure GitHub OAuth](#optional-configure-github-oauth-login--server-management)
 - [Development](#development)
+  - [Local Development](#local-development)
+  - [Tech Stack](#tech-stack)
 - [License](#license)
 
 <a id="highlights"></a>
@@ -152,10 +158,12 @@ This project implements a complete SSH-2.0 protocol stack:
 #### Method 1: Deploy via GitHub Integration (Recommended)
 
 1. **Fork this repository** to your GitHub account.
-2. **Setup Deployment**: Log in to the Cloudflare dashboard, go to Workers & Pages to connect your GitHub account, and select the forked repository.
-3. **Build Command**: During the deployment configuration, make sure to enter `pnpm run build:frontend` as the Build command, then deploy with one click (the build output directory can be left blank).
-4. **Access the App**: After successful deployment, you can access it via the default domain `https://cloudssh.<your-subdomain>.workers.dev`.
-5. **Bind Custom Domain** (Optional): In the Cloudflare Dashboard Workers settings, go to "Triggers" → "Custom Domains" to add your domain.
+2. **Create Worker App**: Log in to Cloudflare, go to Workers & Pages, click Create Application, connect your GitHub account, and select the forked repository.
+3. **Build Command**: During deployment settings, enter `pnpm run build:frontend` as the Build command, then save and deploy.
+4. **Access the App**: After successful deployment, access via the default domain `https://cloudssh.<your-subdomain>.workers.dev`.
+5. **Bind Custom Domain** (Optional): Go to Worker Settings → Domains & Routes → Add, enter your domain and confirm.
+
+> **Note**: To deploy a test environment, repeat the above steps on the `test` branch to create a separate Worker (e.g., `cloudssh-test`). Both Workers share the same DO class names for data synchronization.
 
 #### Method 2: Local CLI Deployment
 
@@ -169,6 +177,7 @@ This project implements a complete SSH-2.0 protocol stack:
    ```bash
    npm install -g pnpm
    pnpm install
+   cd frontend && pnpm install
    ```
 
 3. **Login to Cloudflare**
@@ -176,14 +185,22 @@ This project implements a complete SSH-2.0 protocol stack:
    npx wrangler login
    ```
 
-4. **One-Click Deploy**
+4. **Deploy Production**
    ```bash
    pnpm run deploy
    ```
 
-Once deployed, Wrangler will output your Worker URL. Open that URL in your browser to start using your Web SSH terminal.
+5. **Deploy Test Environment** (Optional)
+   ```bash
+   pnpm run deploy:test
+   ```
 
-5. **Bind Custom Domain** (Optional): In the Cloudflare Dashboard Workers settings, go to "Triggers" → "Custom Domains" to add your domain.
+| Environment | Command | Default Domain | Description |
+|-------------|---------|---------------|-------------|
+| Production | `pnpm run deploy` | `cloudssh.<subdomain>.workers.dev` | main branch code |
+| Test | `pnpm run deploy:test` | `cloudssh-test.<subdomain>.workers.dev` | test branch code, shares DO data with production |
+
+> **Note**: Both environments bind to Durable Objects with the same `class_name`, sharing data completely. After deployment, you can bind different custom domains for each environment in the Cloudflare Dashboard (Settings → Domains & Routes).
 
 #### Optional: Configure Turnstile Human Verification
 
@@ -242,21 +259,54 @@ CloudSSH/
 
 ### Local Development
 
-1. **Install Dependencies**
+#### Environment Setup
+
+1. **Fork and Clone the Repository**
+   ```bash
+   git clone https://github.com/<your-username>/CloudSSH.git
+   cd CloudSSH
+   ```
+
+2. **Install Dependencies** (root and frontend separately)
    ```bash
    pnpm install
+   cd frontend && pnpm install
    ```
 
-2. **Start Development Server**
+3. **Login to Cloudflare** (required on first run, credentials are cached afterward)
    ```bash
-   pnpm run dev
+   npx wrangler login
    ```
-   This command builds the frontend and starts the Wrangler local development environment.
+   > **Note**: When using Wrangler Dev for local development, it connects to your Cloudflare account to access Durable Objects and TCP Sockets. Real SSH TCP traffic is forwarded through Cloudflare's infrastructure.
 
-3. **Build Frontend Only**
-   ```bash
-   pnpm run build:frontend
-   ```
+#### Start Development Server
+
+```bash
+pnpm run dev
+```
+
+This command builds the frontend and starts the Wrangler local development environment, supporting:
+- Automatic rebuild on frontend code changes
+- Automatic reload on Worker code changes
+- Full Durable Objects and TCP Sockets functionality
+
+After the dev server starts, visit the local address shown in the terminal (usually `http://localhost:8787`) to start debugging.
+
+#### Common Development Commands
+
+| Command | Description |
+|---------|-------------|
+| `pnpm run dev` | Build frontend + start Wrangler dev server |
+| `pnpm run build:frontend` | Build frontend only (output to `frontend/dist/`) |
+| `pnpm test` | Run tests |
+
+#### Submitting a PR
+
+1. Create your feature branch from `main`: `git checkout -b feat/your-feature`
+2. Develop and test locally
+3. Submit a PR to the `main` branch
+
+> **Note**: The `test` branch is a pre-release branch for deploying the test environment. For regular development, work based on the `main` branch.
 
 ### Tech Stack
 

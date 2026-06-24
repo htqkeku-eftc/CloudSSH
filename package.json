@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/build-html.js && wrangler dev",
     "deploy": "node scripts/build-html.js && wrangler deploy",
+    "deploy:test": "node scripts/build-html.js && wrangler deploy --env test",
     "build:frontend": "node scripts/build-html.js",
     "test": "vitest run"
   },

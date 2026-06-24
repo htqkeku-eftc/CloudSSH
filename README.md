@@ -39,7 +39,13 @@
 - [核心特性](#features)
 - [架构说明](#architecture)
 - [快速部署](#quick-start)
+  - [GitHub 绑定自动部署](#方式一通过-github-绑定自动部署推荐)
+  - [本地命令行部署](#方式二本地命令行部署)
+  - [配置 Turnstile](#可选配置-turnstile-人机验证)
+  - [配置 GitHub OAuth](#可选配置-github-oauth-登录与服务器管理)
 - [开发说明](#development)
+  - [本地开发](#本地开发)
+  - [技术栈](#技术栈)
 - [开源协议](#license)
 
 <a id="highlights"></a>
@@ -152,10 +158,12 @@ flowchart TB
 #### 方式一：通过 GitHub 绑定自动部署（推荐）
 
 1. **Fork 本仓库** 到你的 GitHub 账号。
-2. **一键部署**：登录 Cloudflare，进入 Workers & Pages 绑定你的 GitHub 账号，选择刚才 Fork 的仓库进行应用创建。
-3. **填写构建命令**：在部署设置中，请务必将"构建命令"（Build command）填写为 `pnpm run build:frontend`，然后点击保存并部署（无需填写构建输出目录）。
+2. **创建 Worker 应用**：登录 Cloudflare，进入 Workers & Pages，点击创建应用，绑定你的 GitHub 账号，选择 Fork 的仓库。
+3. **填写构建命令**：在部署设置中，将"构建命令"（Build command）填写为 `pnpm run build:frontend`，点击保存并部署。
 4. **访问应用**：部署成功后，可通过默认域名 `https://cloudssh.<你的子域>.workers.dev` 访问。
-5. **绑定自定义域名**（可选）：在 Cloudflare Dashboard 的 Workers 设置中，进入 "Triggers" → "Custom Domains" 添加你的域名。
+5. **绑定自定义域名**（可选）：进入 Worker 的 Settings → Domains & Routes → Add，输入你的域名并确认。
+
+> **说明**：如需部署 test 环境，可 Fork 后在 `test` 分支上重复上述步骤，创建独立的 Worker（如 `cloudssh-test`），两个 Worker 共享相同的 DO 类名即可实现数据互通。
 
 #### 方式二：本地命令行部署
 
@@ -169,6 +177,7 @@ flowchart TB
    ```bash
    npm install -g pnpm
    pnpm install
+   cd frontend && pnpm install
    ```
 
 3. **登录 Cloudflare**
@@ -176,14 +185,22 @@ flowchart TB
    npx wrangler login
    ```
 
-4. **一键部署**
+4. **部署生产环境**
    ```bash
    pnpm run deploy
    ```
 
-部署完成后，Wrangler 会输出你的 Worker URL。打开浏览器访问该 URL，即可开始使用你的 Web SSH 终端。
+5. **部署测试环境**（可选）
+   ```bash
+   pnpm run deploy:test
+   ```
 
-5. **绑定自定义域名**（可选）：在 Cloudflare Dashboard 的 Workers 设置中，进入 "Triggers" → "Custom Domains" 添加你的域名。
+| 环境 | 命令 | 默认域名 | 说明 |
+|------|------|---------|------|
+| Production | `pnpm run deploy` | `cloudssh.<子域>.workers.dev` | main 分支代码 |
+| Test | `pnpm run deploy:test` | `cloudssh-test.<子域>.workers.dev` | test 分支代码，与生产环境共享 DO 数据 |
+
+> **说明**：两个环境的 Durable Objects 绑定相同的 class_name，数据完全共享。部署完成后可在 Cloudflare Dashboard 中分别绑定不同的自定义域名（Settings → Domains & Routes）。
 
 #### 可选：配置 Turnstile 人机验证
 
@@ -242,21 +259,54 @@ CloudSSH/
 
 ### 本地开发
 
-1. **安装依赖**
+#### 环境准备
+
+1. **Fork 并克隆仓库**
+   ```bash
+   git clone https://github.com/<你的用户名>/CloudSSH.git
+   cd CloudSSH
+   ```
+
+2. **安装依赖**（需分别安装根目录和前端依赖）
    ```bash
    pnpm install
+   cd frontend && pnpm install
    ```
 
-2. **启动开发服务器**
+3. **登录 Cloudflare**（首次需要，后续会缓存凭据）
    ```bash
-   pnpm run dev
+   npx wrangler login
    ```
-   此命令将构建前端并启动 Wrangler 本地开发环境。
+   > **说明**：本地开发使用 Wrangler Dev 时，会连接到你的 Cloudflare 账号以使用 Durable Objects 和 TCP Sockets。SSH 连接的真实 TCP 流量会通过 Cloudflare 的基础设施转发。
 
-3. **仅构建前端**
-   ```bash
-   pnpm run build:frontend
-   ```
+#### 启动开发服务器
+
+```bash
+pnpm run dev
+```
+
+此命令将构建前端并启动 Wrangler 本地开发环境，支持：
+- 前端代码变更自动重新构建
+- Worker 代码变更自动重新加载
+- 完整的 Durable Objects 和 TCP Sockets 功能
+
+开发服务器启动后，访问终端输出的本地地址（通常为 `http://localhost:8787`）即可进行调试。
+
+#### 常用开发命令
+
+| 命令 | 说明 |
+|------|------|
+| `pnpm run dev` | 构建前端 + 启动 Wrangler 开发服务器 |
+| `pnpm run build:frontend` | 仅构建前端（输出到 `frontend/dist/`） |
+| `pnpm test` | 运行测试 |
+
+#### 提交 PR 的流程
+
+1. 基于 `main` 分支创建你的特性分支：`git checkout -b feat/your-feature`
+2. 进行开发并本地测试
+3. 提交 PR 到 `main` 分支
+
+> **说明**：`test` 分支为预发布分支，用于部署测试环境，普通开发请基于 `main` 分支工作。
 
 ### 技术栈
 
