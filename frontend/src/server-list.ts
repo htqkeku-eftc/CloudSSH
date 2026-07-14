@@ -407,7 +407,7 @@ export class ServerList {
     `;
 
     try {
-      const body: any = { name, host, port, username, auth_method: authMethod };
+      const body: { name: string; host: string; port: number; username: string; auth_method: 'publickey' | 'password'; credential?: string; region?: string } = { name, host, port, username, auth_method: authMethod };
       if (credential) body.credential = credential;
 
       // 区域偏好：空字符串表示 Auto（让系统自动推断）
@@ -437,7 +437,7 @@ export class ServerList {
         throw new Error(err.error || 'Save failed');
       }
 
-      const responseData = await res.json() as any;
+      const responseData = await res.json() as { _debug?: string[]; inferred_hint?: string };
 
       // DEBUG_MODE 时，响应中包含 _debug 字段：显示完整调试日志
       if (responseData._debug && Array.isArray(responseData._debug)) {

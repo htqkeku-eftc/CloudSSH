@@ -35,19 +35,19 @@ function makeDOStub(responder: (req: Request) => Response | Promise<Response>) {
 }
 
 /** 构造一个 env，USER_DB / SSH_SESSION 的 stub 可自定义 */
-function makeEnv(overrides: Partial<Env> & { userDbStub?: any; sshSessionStub?: any } = {}): Env {
+function makeEnv(overrides: Partial<Env> & { userDbStub?: unknown; sshSessionStub?: unknown } = {}): Env {
   const { userDbStub, sshSessionStub, ...rest } = overrides;
   const defaultStub = makeDOStub(() => new Response('{"error":"not mocked"}', { status: 500 }));
   return {
-    SSH_SESSION: { idFromName: () => 'do-ssh', get: () => sshSessionStub ?? defaultStub } as any,
-    USER_DB: { idFromName: () => 'do-userdb', get: () => userDbStub ?? defaultStub } as any,
+    SSH_SESSION: { idFromName: () => 'do-ssh', get: () => sshSessionStub ?? defaultStub } as unknown,
+    USER_DB: { idFromName: () => 'do-userdb', get: () => userDbStub ?? defaultStub } as unknown,
     ...rest,
   } as Env;
 }
 
 function makeRequest(
   path: string,
-  opts: { method?: string; headers?: Record<string, string>; body?: any; cookies?: Record<string, string> } = {}
+  opts: { method?: string; headers?: Record<string, string>; body?: unknown; cookies?: Record<string, string> } = {}
 ): Request {
   const url = new URL(`https://cloudssh.test${path}`);
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
@@ -67,10 +67,10 @@ function makeRequest(
 const fetchMock = vi.fn();
 beforeEach(() => {
   fetchMock.mockReset();
-  (globalThis as any).fetch = fetchMock;
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
 });
 afterEach(() => {
-  (globalThis as any).fetch = undefined as any;
+  (globalThis as { fetch?: typeof fetch }).fetch = undefined;
 });
 
 // =====================================================================
@@ -134,7 +134,7 @@ describe('安全 — 越权防护（IDOR）', () => {
   it('POST /api/servers 时 body 注入 user_id=999 应被 handler 覆盖为真实 user.id', async () => {
     const worker = await loadWorker();
     // 用户真实 id=1，攻击者在 body 里塞 user_id=999 想把服务器存到别人名下
-    let capturedBody: any;
+    let capturedBody: { name: string; user_id: number; host: string };
     const env = makeEnv({
       userDbStub: makeDOStub(async (req) => {
         if (req.url.includes('/internal/session/verify')) {
@@ -229,7 +229,7 @@ describe('安全 — SSRF 接缝（AI base_url）', () => {
     const data = await res.json();
     expect(data.error).toBeTruthy(); // validateBaseUrl 返回的中文 reason
     // 不应到达 DO 持久化
-    expect(env.USER_DB.get({} as any).fetch).not.toHaveBeenCalledWith(
+    expect(env.USER_DB.get({} as unknown).fetch).not.toHaveBeenCalledWith(
       expect.objectContaining({ url: expect.stringContaining('/internal/ai-config') })
     );
   });

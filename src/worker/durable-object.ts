@@ -102,7 +102,7 @@ export class SSHSessionDO {
           try {
             server.send(JSON.stringify({ type: 'error', message: `连接失败: ${errMsg}` }));
             server.close(1011, 'SSH connection failed');
-          } catch (e) { console.error('Failed to notify client of connection error:', e); }
+          } catch (notifyError) { console.error('Failed to notify client of connection error:', notifyError); }
         }
       });
     } else {
@@ -110,7 +110,7 @@ export class SSHSessionDO {
         try {
           server.send(JSON.stringify({ type: 'error', message: 'Connection timeout' }));
           server.close(1011, 'Timeout');
-        } catch (e) { console.error('Failed to notify client of timeout:', e); }
+        } catch (timeoutError) { console.error('Failed to notify client of timeout:', timeoutError); }
       }, 10000);
 
       server.serializeAttachment({ state: 'waiting', timeout: null });
@@ -120,7 +120,7 @@ export class SSHSessionDO {
     return new Response(null, {
       status: 101,
       webSocket: client,
-    } as any);
+    } as ResponseInit & { webSocket: WebSocket });
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
@@ -129,11 +129,18 @@ export class SSHSessionDO {
       if (session) {
         // agent_confirm / agent_stop 需要绕过阻塞的 handleAgentStart 处理
         if (typeof message === 'string') {
-          let msg: any;
-          try { msg = JSON.parse(message); } catch { /* not JSON */ }
-          if (msg && (msg.type === 'agent_confirm' || msg.type === 'agent_stop')) {
-            session.handleAgentControl(msg.type, msg);
-            return;
+          let msg: unknown;
+          try {
+            msg = JSON.parse(message);
+          } catch {
+            msg = undefined;
+          }
+          if (typeof msg === 'object' && msg !== null) {
+            const parsed = msg as { type?: unknown };
+            if (parsed.type === 'agent_confirm' || parsed.type === 'agent_stop') {
+              session.handleAgentControl(parsed.type, parsed as { type: 'agent_confirm' | 'agent_stop' });
+              return;
+            }
           }
         }
         await session.handleWebSocketMessage(message);
@@ -150,7 +157,7 @@ export class SSHSessionDO {
         return;
       }
 
-      let msg: any;
+      let msg: unknown;
       try {
         msg = JSON.parse(message);
       } catch {
@@ -159,11 +166,18 @@ export class SSHSessionDO {
         return;
       }
 
-      if (msg.type === 'resize') {
-        this.rememberTerminalSize(ws, msg.cols, msg.rows);
+      if (typeof msg !== 'object' || msg === null) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Invalid credentials format' }));
+        ws.close(1011, 'Invalid format');
         return;
       }
-      if (msg.type === 'ping') {
+      const m = msg as { type: string; cols?: number; rows?: number };
+
+      if (m.type === 'resize') {
+        this.rememberTerminalSize(ws, m.cols!, m.rows!);
+        return;
+      }
+      if (m.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong' }));
         return;
       }
@@ -174,7 +188,7 @@ export class SSHSessionDO {
         this._pendingTimeouts.delete(ws);
       }
 
-      const config = msg as SSHConnectionConfig;
+      const config = m as SSHConnectionConfig;
       // Strip userId from client-supplied config (anonymous flow — userId only set via trusted token flow)
       delete config.userId;
 
@@ -306,7 +320,7 @@ export class SSHSessionDO {
     return new Response(null, {
       status: 101,
       webSocket: client,
-    } as any);
+    } as ResponseInit & { webSocket: WebSocket });
   }
 
   private buildSFTPAttachUrl(baseUrl: URL, sessionName: string, token: string): string {

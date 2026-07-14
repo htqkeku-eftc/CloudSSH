@@ -234,24 +234,6 @@ export class SSHAuth {
     const e = readMPINT();
     const d = readMPINT();
     const iqmp = readMPINT();
-    const p = readMPINT();
-    const q = readMPINT();
-
-    const pkcs8 = this.buildRSAPKCS8(n, e, d, p, q, iqmp);
-
-    const signingKey = await crypto.subtle.importKey(
-      'pkcs8', pkcs8, RSA_ALGO, false, ['sign']
-    );
-
-    const publicKeyBlob = concat(
-      encodeString(SSH_RSA),
-      this.sshMPInt(e),
-      this.sshMPInt(n),
-    );
-
-    return { signingKey, publicKeyBlob, keyType: SSH_RSA };
-  }
-
   /**
    * Parse ECDSA private key from OpenSSH format.
    */
@@ -259,7 +241,7 @@ export class SSHAuth {
     let po = offset;
 
     let namedCurve: string;
-    let algo: any;
+    let algo: EcdsaParams;
 
     if (keyType === ECDSA_SHA2_NISTP256) {
       namedCurve = 'P-256';

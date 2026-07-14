@@ -155,7 +155,7 @@ export class SSHTerminal {
   private restoreCursorBlinkAfterReturnPrompt: boolean = false;
   private onSessionClosed?: (event: CloseEvent) => void;
   private onSessionReady?: () => void;
-  private onAgentFrameHandler?: (msg: any) => void;
+  private onAgentFrameHandler?: (msg: unknown) => void;
   private sftpAttachUrl: string | null = null;
   private searchBox: HTMLElement | null = null;
   private searchInput: HTMLInputElement | null = null;
@@ -228,7 +228,13 @@ export class SSHTerminal {
       if (this.trzszFilter && e.dataTransfer?.items) {
         this.trzszFilter.uploadFiles(e.dataTransfer.items)
           .then(() => console.log('[trzsz] Drag-drop upload success'))
-          .catch((err: any) => console.error('[trzsz] Drag-drop upload error:', err));
+          .catch((err: unknown) => {
+            if (err instanceof Error) {
+              console.error('[trzsz] Drag-drop upload error:', err);
+            } else {
+              console.error('[trzsz] Drag-drop upload error:', String(err));
+            }
+          });
       }
     });
   }
@@ -247,7 +253,7 @@ export class SSHTerminal {
 
   applyImportedTheme(data: { terminal?: Record<string, string>; ui?: Record<string, string> }): void {
     if (data.terminal) {
-      this.terminal.options.theme = data.terminal as any;
+      this.terminal.options.theme = data.terminal;
     }
     if (data.ui) {
       const root = document.documentElement;
@@ -265,7 +271,7 @@ export class SSHTerminal {
     this.onSessionReady = handler;
   }
 
-  setAgentFrameHandler(handler: (msg: any) => void): void {
+  setAgentFrameHandler(handler: (msg: unknown) => void): void {
     this.onAgentFrameHandler = handler;
   }
 
@@ -467,7 +473,6 @@ export class SSHTerminal {
       this.setupWebSocketHandlers(reject);
     });
   }
-
   connectWithWebSocket(ws: WebSocket, hostInfo?: { host: string; port: number }): void {
     this.resetActiveConnection();
     this.lastConfig = hostInfo ? { host: hostInfo.host, port: hostInfo.port, username: '' } : null;
@@ -492,7 +497,7 @@ export class SSHTerminal {
     this.setupWebSocketHandlers();
   }
 
-  private setupWebSocketHandlers(rejectFn?: (reason?: any) => void): void {
+  private setupWebSocketHandlers(rejectFn?: (reason?: unknown) => void): void {
     if (!this.ws) return;
     const socket = this.ws;
 

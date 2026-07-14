@@ -14,24 +14,36 @@ export class ToolExecutor {
     private resetTimeout?: () => void,
   ) {}
 
-  async execute(toolName: string, args: any, signal?: AbortSignal): Promise<string> {
+  async execute(toolName: string, args: unknown, signal?: AbortSignal): Promise<string> {
     switch (toolName) {
-      case 'execute_command':
-        return this.handleExec(args.command, args.timeout_ms ?? 10000, signal);
-      case 'read_terminal_context':
-        return this.terminalContext.snapshot(args.last_lines ?? 200);
+      case 'execute_command': {
+        const execArgs = args as { command: string; timeout_ms?: number };
+        return this.handleExec(execArgs.command, execArgs.timeout_ms ?? 10000, signal);
+      }
+      case 'read_terminal_context': {
+        const rtcArgs = args as { last_lines?: number };
+        return this.terminalContext.snapshot(rtcArgs.last_lines ?? 200);
+      }
       case 'list_processes':
         return this.handleListProcesses(signal);
-      case 'service_manage':
-        return this.handleServiceManage(args.action, args.service, signal);
-      case 'docker_manage':
-        return this.handleDockerManage(args.action, args.target, args.options, signal);
+      case 'service_manage': {
+        const smArgs = args as { action: string; service: string };
+        return this.handleServiceManage(smArgs.action, smArgs.service, signal);
+      }
+      case 'docker_manage': {
+        const dmArgs = args as { action: string; target: string; options?: unknown };
+        return this.handleDockerManage(dmArgs.action, dmArgs.target, dmArgs.options, signal);
+      }
       case 'detect_environment':
         return this.handleDetectEnvironment(signal);
-      case 'ask_user_confirmation':
-        return this.handleConfirmation(args.command, args.reason, signal);
-      case 'respond_to_user':
-        return `RESPOND:${args.message ?? args.content ?? ''}`;
+      case 'ask_user_confirmation': {
+        const auArgs = args as { command: string; reason: string };
+        return this.handleConfirmation(auArgs.command, auArgs.reason, signal);
+      }
+      case 'respond_to_user': {
+        const ruArgs = args as { message?: string; content?: string };
+        return `RESPOND:${ruArgs.message ?? ruArgs.content ?? ''}`;
+      }
       default:
         return `Unknown tool: ${toolName}`;
     }

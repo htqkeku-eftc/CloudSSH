@@ -26,7 +26,7 @@ const UPLOAD_PROGRESS_CHUNKS = 8;
 const MAX_SFTP_FILE_SIZE = 500 * 1024 * 1024; // 500MB limit
 
 type SendEncryptedFn = (payload: Uint8Array) => Promise<void>;
-type SendJSONFn = (msg: any) => void;
+type SendJSONFn = (msg: unknown) => void;
 type SendBinaryFn = (data: Uint8Array) => void;
 type SendDebugFn = (message: string) => void;
 type SFTPOperation = 'init' | 'list' | 'stat' | 'download' | 'upload' | 'delete' | 'rename' | 'mkdir' | 'rmdir';
@@ -781,7 +781,17 @@ export class SFTPHandler {
   }
 
   // Format a directory entry for the frontend
-  private formatEntry(entry: SFTPFileEntry): any {
+  private formatEntry(entry: SFTPFileEntry): {
+    name: string;
+    type: string;
+    size: number;
+    sizeFormatted: string;
+    permissions: string;
+    permissionsRaw: number;
+    modifiedTime: number;
+    isDir: boolean;
+    isLink: boolean;
+  } {
     const type = entry.attrs.permissions !== undefined
       ? getFileTypeFromPermissions(entry.attrs.permissions)
       : 'file';
@@ -799,7 +809,7 @@ export class SFTPHandler {
     };
   }
 
-  private formatAttrs(attrs: SFTPFileAttributes): any {
+  private formatAttrs(attrs: SFTPFileAttributes): { type: string; size: number; sizeFormatted: string; permissions: string; modifiedTime: number } {
     const type = attrs.permissions !== undefined
       ? getFileTypeFromPermissions(attrs.permissions)
       : 'file';

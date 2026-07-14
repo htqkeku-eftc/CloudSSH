@@ -84,7 +84,7 @@ export class AIConfigPanel {
     try {
       const res = await fetch('/api/ai/config');
       if (res.ok) {
-        const data = await res.json() as any;
+        const data = await res.json() as { configured: boolean; base_url?: string; model?: string; api_key_last4?: string };
         if (data.configured) {
           const baseUrlEl = this.modalEl?.querySelector('#ai-base-url') as HTMLInputElement;
           const modelEl = this.modalEl?.querySelector('#ai-model') as HTMLInputElement;
@@ -96,10 +96,15 @@ export class AIConfigPanel {
           }
         }
       }
-    } catch {}
+    } catch {}  
   }
 
   private async fetchModels(): Promise<void> {
+    type FetchModelsResponse = {
+      error?: string;
+      fallback?: boolean;
+      models?: { id: string }[];
+    };
     const baseUrlEl = this.modalEl?.querySelector('#ai-base-url') as HTMLInputElement;
     const apiKeyEl = this.modalEl?.querySelector('#ai-api-key') as HTMLInputElement;
     const statusEl = this.modalEl?.querySelector('#ai-fetch-status') as HTMLElement;
@@ -124,7 +129,7 @@ export class AIConfigPanel {
         body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
       });
 
-      const data = await res.json() as any;
+      const data = await res.json() as FetchModelsResponse;
 
       if (data.error) {
         this.showFetchStatus(data.error, true);
@@ -146,7 +151,7 @@ export class AIConfigPanel {
         }
       }
       this.showFetchStatus(`获取到 ${models.length} 个模型`, false);
-    } catch (e) {
+    } catch (e: unknown) {
       this.showFetchStatus('获取失败: ' + (e instanceof Error ? e.message : '网络错误'), true);
     } finally {
       if (fetchBtn) fetchBtn.disabled = false;
@@ -191,7 +196,7 @@ export class AIConfigPanel {
         if (successEl) { successEl.textContent = '配置保存成功'; successEl.classList.remove('hidden'); }
         setTimeout(() => this.hide(), 1500);
       } else {
-        const data = await res.json() as any;
+        const data = await res.json<{ error?: string }>();
         if (errorEl) { errorEl.textContent = data.error || '保存失败'; errorEl.classList.remove('hidden'); }
       }
     } catch {
