@@ -53,7 +53,7 @@ export class AgentCore {
 
   constructor(
     private terminalContext: TerminalContext,
-    private sendToFrontend: (msg: any) => void,
+    private sendToFrontend: (msg: unknown) => void,
     private fetchAIConfig: (userId: string) => Promise<AIConfig | null>,
     private execCommand: (command: string, timeout: number, signal?: AbortSignal) => Promise<{
       stdout: string;
@@ -83,18 +83,26 @@ export class AgentCore {
     return this.config.maxIterations + this.progress.extensionUsed * PROGRESS_CONFIG.extensionSize;
   }
 
-  private recordToolCall(toolName: string, args: any): void {
-    const signature = toolName === 'execute_command'
-      ? `exec:${args.command?.trim()}`
-      : `${toolName}:${JSON.stringify(args)}`;
+  private recordToolCall(toolName: string, args: unknown): void {
+    let signature: string;
+
+    if (
+      toolName === 'execute_command' &&
+      typeof args === 'object' &&
+      args !== null &&
+      'command' in args &&
+      typeof (args as any).command === 'string'
+    ) {
+      const command = (args as { command: string }).command.trim();
+      signature = `exec:${command}`;
+      this.progress.uniqueCommands.add(command);
+    } else {
+      signature = `${toolName}:${JSON.stringify(args)}`;
+    }
 
     this.progress.recentToolCalls.push(signature);
     if (this.progress.recentToolCalls.length > PROGRESS_CONFIG.loopDetectionWindow) {
       this.progress.recentToolCalls.shift();
-    }
-
-    if (toolName === 'execute_command' && args.command) {
-      this.progress.uniqueCommands.add(args.command.trim());
     }
   }
 
@@ -314,9 +322,9 @@ export class AgentCore {
             if (signal.aborted) break;
 
             // Notify frontend: executing
-            let toolArgs: any = {};
+            let toolArgs: Record<string, unknown> = {};
             try {
-              toolArgs = JSON.parse(toolCall.function.arguments);
+              toolArgs = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
             } catch {
               toolArgs = { command: toolCall.function.arguments };
             }
@@ -329,7 +337,7 @@ export class AgentCore {
             });
 
             // Execute tool call
-            let result = await this.toolExecutor.execute(
+            let result: string = await this.toolExecutor.execute(
               toolCall.function.name,
               toolArgs,
               signal,

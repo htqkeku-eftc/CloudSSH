@@ -59,7 +59,7 @@ export class SSHSession {
   private readonly textDecoder = new TextDecoder();
   private ws: WebSocket;
   private sftpWs: WebSocket | null = null;
-  private socket: any;
+  private socket: unknown;
   private config: SSHConnectionConfig;
   private strictHostKeyVerify: boolean;
   private sftpAttachUrl?: string;
@@ -124,7 +124,7 @@ export class SSHSession {
 
   constructor(
     ws: WebSocket,
-    socket: any,
+    socket: unknown,
     config: SSHConnectionConfig,
     strictHostKeyVerify: boolean = true,
     debugMode: boolean = false,
@@ -1302,7 +1302,7 @@ export class SSHSession {
 
   async handleWebSocketMessage(data: string | ArrayBuffer): Promise<void> {
     if (typeof data === 'string') {
-      let parsed: any = undefined;
+      let parsed: Record<string, unknown> | undefined = undefined;
       // 仅对可能为 JSON 的消息尝试解析（以 { 开头），避免终端输入产生噪音日志
       if (data.charCodeAt(0) === 123) {
         try {
@@ -1311,20 +1311,20 @@ export class SSHSession {
       }
 
       if (parsed && typeof parsed === 'object') {
-        if (parsed.type === 'ping') {
+        if (parsed['type'] === 'ping') {
           this.ws.send(JSON.stringify({ type: 'pong' }));
           return;
         }
-        if (parsed.type === 'resize') {
-          await this.handleResize(parsed.cols, parsed.rows);
+        if (parsed['type'] === 'resize') {
+          await this.handleResize(parsed['cols'] as number, parsed['rows'] as number);
           return;
         }
 
         // Agent messages
         // agent_stop / agent_confirm 已由 durable-object.ts 在 webSocketMessage 入口
         // 提前拦截并通过 handleAgentControl 同步处理，不再到达此处。
-        if (parsed.type === 'agent_start') {
-          await this.handleAgentStart(parsed.message, parsed.user_id);
+        if (parsed['type'] === 'agent_start') {
+          await this.handleAgentStart(parsed['message'] as string, parsed['user_id'] as string);
           return;
         }
 
@@ -1341,78 +1341,82 @@ export class SSHSession {
     }
   }
 
-  async handleSFTPWebSocketMessage(data: string | ArrayBuffer): Promise<void> {
-    if (typeof data === 'string') {
-      let parsed: any;
-      try {
-        parsed = JSON.parse(data);
-      } catch {
-        this.sendSFTPError('protocol', 'Invalid SFTP message format');
-        return;
-      }
-
-      if (parsed?.type === 'ping') {
-        this.sendSFTPJSON({ type: 'pong' });
-        return;
-      }
-
-      if (!parsed?.type || !parsed.type.startsWith('sftp_')) {
-        this.sendSFTPError('protocol', 'Invalid SFTP message type');
-        return;
-      }
-
-      if (parsed.type === 'sftp_download_cancel') {
-        this.sftpHandler?.cancelDownload();
-        return;
-      }
-
-      if (parsed.type === 'sftp_upload_cancel') {
-        void this.sftpHandler?.uploadCancel();
-        return;
-      }
-
-      this.enqueueSFTPTask(this.getSFTPOperation(parsed.type), () => this.handleSFTPMessage(parsed));
-      return;
-    }
-
-    if (!this.sftpHandler) {
-      this.sendSFTPError('upload', 'SFTP 未初始化，请先发送 sftp_init');
-      return;
-    }
-
-    const chunk = new Uint8Array(data);
-    void this.sftpHandler.onUploadChunk(chunk).catch((error) => {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      this.sendDebug(`SFTP upload chunk ERROR: ${errMsg}`);
-    });
+  interface SFTPMessage {
+    type: string;
+    path?: string;
   }
+    async handleSFTPWebSocketMessage(data: string | ArrayBuffer): Promise<void> {
+      if (typeof data === 'string') {
+        let parsed: SFTPMessage;
+        try {
+          parsed = JSON.parse(data);
+        } catch {
+          this.sendSFTPError('protocol', 'Invalid SFTP message format');
+          return;
+        }
 
-  private async handleSFTPMessage(msg: any): Promise<void> {
-    if (this.state !== 'ready') {
-      this.sendSFTPError(this.getSFTPOperation(msg.type), 'SSH 连接未就绪');
-      return;
+        if (parsed?.type === 'ping') {
+          this.sendSFTPJSON({ type: 'pong' });
+          return;
+        }
+
+        if (!parsed?.type || !parsed.type.startsWith('sftp_')) {
+          this.sendSFTPError('protocol', 'Invalid SFTP message type');
+          return;
+        }
+
+        if (parsed.type === 'sftp_download_cancel') {
+          this.sftpHandler?.cancelDownload();
+          return;
+        }
+
+        if (parsed.type === 'sftp_upload_cancel') {
+          void this.sftpHandler?.uploadCancel();
+          return;
+        }
+
+        this.enqueueSFTPTask(this.getSFTPOperation(parsed.type), () => this.handleSFTPMessage(parsed));
+        return;
+      }
+
+      if (!this.sftpHandler) {
+        this.sendSFTPError('upload', 'SFTP 未初始化，请先发送 sftp_init');
+        return;
+      }
+
+      const chunk = new Uint8Array(data);
+      void this.sftpHandler.onUploadChunk(chunk).catch((error) => {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        this.sendDebug(`SFTP upload chunk ERROR: ${errMsg}`);
+      });
     }
 
-    if (msg.type === 'sftp_init') {
-      await this.openSFTPChannel();
-      return;
-    }
+    private async handleSFTPMessage(msg: SFTPMessage): Promise<void> {
+      if (this.state !== 'ready') {
+        this.sendSFTPError(this.getSFTPOperation(msg.type), 'SSH 连接未就绪');
+        return;
+      }
 
-    if (!this.sftpHandler) {
-      this.sendSFTPError(this.getSFTPOperation(msg.type), 'SFTP 未初始化，请先发送 sftp_init');
-      return;
-    }
+      if (msg.type === 'sftp_init') {
+        await this.openSFTPChannel();
+        return;
+      }
 
-    switch (msg.type) {
-      case 'sftp_list':
-        await this.sftpHandler.listDirectory(msg.path || '.');
-        break;
-      case 'sftp_stat':
-        await this.sftpHandler.stat(msg.path);
-        break;
-      case 'sftp_download':
-        await this.sftpHandler.downloadFile(msg.path);
-        break;
+      if (!this.sftpHandler) {
+        this.sendSFTPError(this.getSFTPOperation(msg.type), 'SFTP 未初始化，请先发送 sftp_init');
+        return;
+      }
+
+      switch (msg.type) {
+        case 'sftp_list':
+          await this.sftpHandler.listDirectory(msg.path || '.');
+          break;
+        case 'sftp_stat':
+          await this.sftpHandler.stat(msg.path);
+          break;
+        case 'sftp_download':
+          await this.sftpHandler.downloadFile(msg.path);
+          break;
       case 'sftp_download_cancel':
         this.sftpHandler.cancelDownload();
         break;
@@ -1460,9 +1464,14 @@ export class SSHSession {
         this.sendDebug(() => `SFTP sendEncrypted: len=${payload.length}, type=${payload[0]}`);
         return this.sendEncrypted(payload);
       },
-      (msg: any) => {
-        this.sendDebug(() => `SFTP sendJSON: type=${msg.type}`);
-        this.sendSFTPJSON(msg);
+      (msg: unknown) => {
+        if (typeof msg === "object" && msg !== null && "type" in msg) {
+          const typedMsg = msg as { type: string; [key: string]: unknown };
+          this.sendDebug(() => `SFTP sendJSON: type=${typedMsg.type}`);
+          this.sendSFTPJSON(typedMsg);
+        } else {
+          this.sendDebug(() => `SFTP sendJSON: invalid message`);
+        }
       },
       (data: Uint8Array) => {
         this.sendDebug(() => `SFTP sendBinary: len=${data.length}`);
@@ -1530,7 +1539,7 @@ export class SSHSession {
     this.sendSFTPJSON({ type: 'sftp_error', operation, message });
   }
 
-  private sendSFTPJSON(msg: any): void {
+  private sendSFTPJSON(msg: unknown): void {
     const payload = JSON.stringify(msg);
     if (this.sftpWs) {
       try {
@@ -1720,7 +1729,7 @@ export class SSHSession {
     if (!this.agentCore) {
       this.agentCore = new AgentCore(
         this.terminalContext,
-        (msg: any) => this.sendAgentFrame(msg),
+        (msg: unknown) => this.sendAgentFrame(msg),
         async (uid: string) => this.fetchAgentAIConfig(uid),
         async (command: string, timeout: number, signal?: AbortSignal) => this.executeAgentCommand(command, timeout, signal),
         async (command: string, reason: string) => this.askAgentConfirmation(command, reason),
@@ -1734,10 +1743,14 @@ export class SSHSession {
    * 处理 Agent 控制消息（confirm/stop），绕过被 handleAgentStart 阻塞的 WebSocket handler。
    * 这些消息由 durable-object.ts 在调用 handleWebSocketMessage 之前提前路由。
    */
-  handleAgentControl(type: string, msg: any): void {
+  handleAgentControl(type: string, msg: unknown): void {
     if (type === 'agent_confirm') {
       if (this.confirmationResolve) {
-        this.confirmationResolve(msg.approved === true);
+        let approved = false;
+        if (msg && typeof msg === 'object' && 'approved' in msg && typeof (msg as any).approved === 'boolean') {
+          approved = (msg as any).approved;
+        }
+        this.confirmationResolve(approved);
         this.confirmationResolve = null;
       }
       return;
@@ -1881,7 +1894,7 @@ export class SSHSession {
     return this.activeExecChannels.has(channelID);
   }
 
-  private sendAgentFrame(msg: any): void {
+  private sendAgentFrame(msg: unknown): void {
     try {
       if (this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify(msg));

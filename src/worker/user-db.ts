@@ -13,7 +13,7 @@ import { inferLocationHint, type InferResult } from './ip-geo';
 export class UserDBDO {
   private state: DurableObjectState;
   private env: Env;
-  private db: any; // SqlStorage (DO SQLite)
+  private db: { exec(sql: string): void }; // SqlStorage (DO SQLite)
   // one-time-token 内存存储：token → { config, expiresAt }
   private connectTokens: Map<string, { config: SSHConnectionConfig; expiresAt: number }> = new Map();
   private static readonly MAX_CONNECT_TOKENS = 1000;
@@ -22,7 +22,7 @@ export class UserDBDO {
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
-    this.db = (state.storage as any).sql;
+    this.db = (state.storage as any).sql as { exec(sql: string): void };
     this.initSchema();
   }
 
@@ -106,10 +106,10 @@ export class UserDBDO {
     // === Migration: 给既有 servers 表追加 region / inferred_hint 列（幂等） ===
     // SQLite 没有 ADD COLUMN IF NOT EXISTS，用 PRAGMA table_info 守卫
     const serverCols = this.db.exec("PRAGMA table_info(servers)").toArray();
-    if (!serverCols.some((c: any) => c.name === 'region')) {
+    if (!serverCols.some((c: { name: string }) => c.name === 'region')) {
       this.db.exec("ALTER TABLE servers ADD COLUMN region TEXT DEFAULT NULL");
     }
-    if (!serverCols.some((c: any) => c.name === 'inferred_hint')) {
+    if (!serverCols.some((c: { name: string }) => c.name === 'inferred_hint')) {
       this.db.exec("ALTER TABLE servers ADD COLUMN inferred_hint TEXT DEFAULT NULL");
     }
   }
@@ -832,11 +832,11 @@ export class UserDBDO {
     }
 
     // Check if an existing configuration exists with a valid API key
-    const existing = this.db.exec(
+    const existing: Array<{ api_key_enc: string | null }> = this.db.exec(
       'SELECT api_key_enc FROM ai_configs WHERE user_id = ?',
       body.user_id
     ).toArray();
-    const hasExistingKey = existing.length > 0 && !!(existing[0] as any).api_key_enc;
+    const hasExistingKey = existing.length > 0 && existing[0].api_key_enc != null;
 
     if (!body.api_key && !hasExistingKey) {
       return Response.json({ error: '首次配置必须填写 API Key' }, { status: 400 });

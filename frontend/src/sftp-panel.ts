@@ -383,7 +383,7 @@ export class SFTPPanel {
     this.sendJSON({ type: 'sftp_init' });
   }
 
-  private sendJSON(msg: any): void {
+  private sendJSON(msg: unknown): void {
     this.sendRaw(JSON.stringify(msg));
   }
 
@@ -531,28 +531,43 @@ export class SFTPPanel {
   }
 
   // Handle messages from the backend
-  handleMessage(msg: any): void {
-    switch (msg.type) {
+  handleMessage(msg: unknown): void {
+    if (typeof msg !== 'object' || msg === null) {
+      return;
+    }
+    const message = msg as { type: string; [key: string]: unknown };
+    if (typeof message.type !== 'string') {
+      return;
+    }
+    switch (message.type) {
       case 'sftp_ready':
         this.initializing = false;
         this.sftpReady = true;
         this.navigate('~');
         break;
       case 'sftp_list_result':
-        this.onListResult(msg.path, msg.entries);
+        if (typeof message.path === 'string' && Array.isArray(message.entries)) {
+          this.onListResult(message.path, message.entries as unknown[]);
+        }
         break;
       case 'sftp_stat_result':
         break;
       case 'pong':
         break;
       case 'sftp_download_start':
-        this.onDownloadStart(msg.filename, msg.size);
+        if (typeof message.filename === 'string' && typeof message.size === 'number') {
+          this.onDownloadStart(message.filename, message.size);
+        }
         break;
       case 'sftp_download_progress':
-        this.onDownloadProgress(msg.loaded, msg.total);
+        if (typeof message.loaded === 'number' && typeof message.total === 'number') {
+          this.onDownloadProgress(message.loaded, message.total);
+        }
         break;
       case 'sftp_download_done':
-        this.onDownloadDone(msg.filename);
+        if (typeof message.filename === 'string') {
+          this.onDownloadDone(message.filename);
+        }
         break;
       case 'sftp_download_cancelled':
         this.onDownloadCancelled();
@@ -596,7 +611,7 @@ export class SFTPPanel {
     }
   }
 
-  private handleSFTPError(msg: any): void {
+  private handleSFTPError(msg: { operation?: string; message: string }): void {
     const operation = typeof msg.operation === 'string' ? msg.operation : '';
 
     if (operation === 'init' || !this.sftpReady) {

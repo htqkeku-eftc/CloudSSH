@@ -496,14 +496,14 @@ async function handleAIRoute(request: Request, url: URL, env: Env): Promise<Resp
         return Response.json({ error: `Provider returned ${res.status}` }, { status: 502 });
       }
 
-      const data = await res.json() as any;
-      const models: Array<{ id: string }> = (data.data || [])
-        .filter((m: any) => {
+      const data = await res.json() as { data?: { id: string }[] };
+      const models: { id: string }[] = (data.data || [])
+        .filter((m) => {
           const id = m.id || '';
           return !/embedding|whisper|tts|dall-e|moderation|rerank/i.test(id);
         })
-        .map((m: any) => ({ id: m.id }))
-        .sort((a: any, b: any) => a.id.localeCompare(b.id));
+        .map((m) => ({ id: m.id }))
+        .sort((a, b) => a.id.localeCompare(b.id));
 
       return Response.json({ models, fallback: false });
     } catch (e) {
@@ -542,17 +542,17 @@ async function handleSSHConnection(request: Request, env: Env): Promise<Response
   // 仅尊重用户通过前端下拉手动传入的 ?region= 覆盖值
   const region = validateRegion(url.searchParams.get('region'));
   const stub = region
-    ? env.SSH_SESSION.get(doId, { locationHint: region } as any)
+    ? env.SSH_SESSION.get(doId, { locationHint: region })
     : env.SSH_SESSION.get(doId);
 
   const doUrl = new URL(request.url);
   doUrl.searchParams.set('session', sessionName);
 
   const headers = new Headers(request.headers);
-  headers.set('x-cloudflare-colo', (request as any).cf?.colo || 'UNKNOWN');
+  const colo = (request as Request & { cf?: { colo?: string } }).cf?.colo ?? 'UNKNOWN';
+  headers.set('x-cloudflare-colo', colo);
 
   return stub.fetch(new Request(doUrl.toString(), { headers }));
-}
 
 /**
  * 处理通过 one-time-token 发起的 SSH 连接
@@ -594,7 +594,7 @@ async function handleTokenSSHConnection(request: Request, env: Env, token: strin
   // 这里仅做白名单过滤，零运行时 ipapi 调用
   const hint = validateRegion(config.locationHint);
   const doStub = hint
-    ? env.SSH_SESSION.get(doId, { locationHint: hint } as any)
+    ? env.SSH_SESSION.get(doId, { locationHint: hint })
     : env.SSH_SESSION.get(doId);
 
   const doUrl = new URL(request.url);
@@ -602,7 +602,7 @@ async function handleTokenSSHConnection(request: Request, env: Env, token: strin
   doUrl.searchParams.set('session', sessionName);
 
   const headers = new Headers(request.headers);
-  headers.set('x-cloudflare-colo', (request as any).cf?.colo || 'UNKNOWN');
+  headers.set('x-cloudflare-colo', ((request as unknown) as { cf?: { colo?: string } }).cf?.colo || 'UNKNOWN');
   headers.set('x-ssh-config', encodeURIComponent(JSON.stringify(config)));
 
   const doRequest = new Request(doUrl.toString(), {

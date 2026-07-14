@@ -147,7 +147,17 @@ export class AgentPanel {
     requestAnimationFrame(() => this.onLayoutChange?.());
   }
 
-  handleAgentFrame(msg: any): void {
+  handleAgentFrame(
+    msg:
+      | { subType: 'thinking'; iteration: number }
+      | { subType: 'executing'; tool: string; args: unknown[] }
+      | { subType: 'stream_chunk'; content: string }
+      | { subType: 'stream_end'; content: string }
+      | { subType: 'response'; content: string }
+      | { subType: 'confirm_required'; command: string; reason: string }
+      | { subType: 'error'; message: string }
+      | { subType: 'progress_extend'; message: string; currentIteration: number; newMax: number; reason: string }
+  ): void {
     switch (msg.subType) {
       case 'thinking':
         this.showThinking(msg.iteration);
@@ -232,7 +242,7 @@ export class AgentPanel {
     }
   }
 
-  private showExecuting(tool: string, args: any): void {
+  private showExecuting(tool: string, args: { command?: string; [key: string]: unknown }): void {
     if (this.streamingEl) {
       this.convertStreamToThoughtStep();
     }

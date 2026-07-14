@@ -114,7 +114,7 @@ export class TabManager {
           tab.agentPanel = new AgentPanel(tab.containerEl, true);
           tab.agentPanel.render();
           tab.agentPanel.setWebSocketSend((data: string) => tab.terminal.sendWebSocketMessage(data));
-          tab.terminal.setAgentFrameHandler((msg: any) => {
+          tab.terminal.setAgentFrameHandler((msg: unknown) => {
             tab.agentPanel?.handleAgentFrame(msg);
           });
           // AgentPanel 展开/收起时触发终端重新适配尺寸

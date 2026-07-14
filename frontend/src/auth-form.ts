@@ -6,7 +6,7 @@ async function deriveKey(salt: Uint8Array): Promise<CryptoKey> {
   const raw = new TextEncoder().encode(window.location.origin + ':cloudssh');
   const baseKey = await crypto.subtle.importKey('raw', raw, 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: salt as any, iterations: 100000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
     baseKey,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -285,14 +285,21 @@ export class ConnectionForm {
   }
 
   private renderRecentConnections(): void {
+    type RecentConnection = {
+      authMethod: 'publickey' | 'password';
+      username: string;
+      host: string;
+      port: number;
+    };
+
     const section = document.getElementById('recent-connections-section');
     const list = document.getElementById('recent-connections-list');
     if (!section || !list) return;
 
     const raw = localStorage.getItem('cloudssh_recent_connections');
-    let recent: any[] = [];
+    let recent: RecentConnection[] = [];
     try {
-      recent = raw ? JSON.parse(raw) : [];
+      recent = raw ? (JSON.parse(raw) as RecentConnection[]) : [];
       if (!Array.isArray(recent)) recent = [];
     } catch {
       recent = [];
@@ -377,9 +384,12 @@ export class ConnectionForm {
 
   private deleteConnection(index: number): void {
     const raw = localStorage.getItem('cloudssh_recent_connections');
-    let recent: any[] = [];
+    let recent: unknown[] = [];
     try {
-      recent = raw ? JSON.parse(raw) : [];
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        recent = parsed;
+      }
     } catch {}
     
     if (index >= 0 && index < recent.length) {
@@ -391,10 +401,22 @@ export class ConnectionForm {
 
   private async loadSavedCredentials(): Promise<void> {
     const recentRaw = localStorage.getItem('cloudssh_recent_connections');
-    let recent: any[] = [];
+    let recent: {
+      id: string;
+      host: string;
+      port: number;
+      username: string;
+      authMethod: 'publickey' | 'password';
+      timestamp: number;
+      encryptedCred: string;
+    }[] = [];
     try {
-      recent = recentRaw ? JSON.parse(recentRaw) : [];
-      if (!Array.isArray(recent)) recent = [];
+      if (recentRaw) {
+        const parsed = JSON.parse(recentRaw);
+        if (Array.isArray(parsed)) {
+          recent = parsed as typeof recent;
+        }
+      }
     } catch {
       recent = [];
     }
@@ -423,7 +445,7 @@ export class ConnectionForm {
     // 渲染历史列表
     this.renderRecentConnections();
 
-    // 默认自动填入最近使用的一条（即第一条）
+    // 默认自动填入最近使用的一条（即第一条)
     if (recent.length > 0) {
       this.fillConnection(recent[0]);
     }
@@ -479,10 +501,22 @@ export class ConnectionForm {
 
     // 更新最近连接列表
     const recentRaw = localStorage.getItem('cloudssh_recent_connections');
-    let recent: any[] = [];
+    type RecentConnection = {
+      id: string;
+      host: string;
+      port: number;
+      username: string;
+      authMethod: 'publickey' | 'password';
+      timestamp: number;
+      region?: string;
+      encryptedCred?: string;
+    };
+    let recent: RecentConnection[] = [];
     try {
-      recent = recentRaw ? JSON.parse(recentRaw) : [];
-      if (!Array.isArray(recent)) recent = [];
+      const parsed: unknown = recentRaw ? JSON.parse(recentRaw) : [];
+      if (Array.isArray(parsed)) {
+        recent = parsed as RecentConnection[];
+      }
     } catch {}
 
     const id = `${username}@${host}:${port}`;
