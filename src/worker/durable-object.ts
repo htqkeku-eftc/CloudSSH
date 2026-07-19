@@ -1,5 +1,6 @@
 import { Env, SSHConnectionConfig, TerminalSize, normalizeTerminalSize } from '../types';
 import { SSHSession } from './ssh-session';
+import { checkHostResolved } from './dns-check';
 
 /**
  * SSRF 防护：检测目标主机是否为内网、保留或特殊地址。
@@ -71,12 +72,13 @@ export class SSHSessionDO {
         return new Response('Invalid request body', { status: 400 });
       }
     } else {
-      const configParam = request.headers.get('x-ssh-config') || url.searchParams.get('config');
-      if (configParam) {
+      const headerConfig = request.headers.get('x-ssh-config');
+
+      if (headerConfig) {
         try {
-          prefilledConfig = JSON.parse(decodeURIComponent(configParam)) as SSHConnectionConfig;
+          prefilledConfig = JSON.parse(decodeURIComponent(headerConfig)) as SSHConnectionConfig;
         } catch {
-          return new Response('Invalid config parameter', { status: 400 });
+          return new Response('Invalid config header', { status: 400 });
         }
       }
     }
@@ -231,6 +233,11 @@ export class SSHSessionDO {
       if (isBlockedHost(config.host)) {
         throw new Error('禁止连接内网或保留地址 (SSRF 防护)');
       }
+      // DNS rebinding defence: resolve hostname and check resolved IPs
+      const dnsCheck = await checkHostResolved(config.host);
+      if (dnsCheck.blocked) {
+        throw new Error(dnsCheck.reason!);
+      }
       const BLOCKED_PORTS = [
         23, 80, 443, 25, 465, 587, 110, 143, 993, 995,
         3306, 5432, 6379, 9200, 11211, 27017, 5060,
@@ -258,7 +265,7 @@ export class SSHSessionDO {
         config.rows = pendingSize.rows;
       }
       const sftpAttachUrl = this.pendingAttachUrls.get(ws);
-      const session = new SSHSession(ws, socket, config, strictVerify, debugMode, sftpAttachUrl, this.env, config.userId);
+      const session = new SSHSession(ws, socket, config, strictVerify, debugMode, sftpAttachUrl, this.env, config.userId, config.githubId);
       this.sessions.set(ws, session);
 
       // 向前端发送双段延迟的物理基准延迟
